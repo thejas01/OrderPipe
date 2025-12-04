@@ -1,0 +1,257 @@
+version: '3.8'
+
+services:
+  # Infrastructure Services
+  postgresql:
+    image: postgres:15-alpine
+    container_name: orderpipe-postgres
+    environment:
+      POSTGRES_DB: orderpipe
+      POSTGRES_USER: orderpipe
+      POSTGRES_PASSWORD: orderpipe123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orderpipe"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: orderpipe-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: orderpipe
+      RABBITMQ_DEFAULT_PASS: orderpipe123
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: orderpipe-redis
+    command: redis-server --appendonly yes --requirepass orderpipe123
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Microservices
+  service-registry:
+    build: ./service-registry
+    container_name: orderpipe-service-registry
+    ports:
+      - "8761:8761"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    healthcheck:
+      test: "wget --no-verbose --tries=1 --spider http://localhost:8761/actuator/health || exit 1"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  config-server:
+    build: ./config-server
+    container_name: orderpipe-config-server
+    ports:
+      - "8888:8888"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+    depends_on:
+      service-registry:
+        condition: service_healthy
+    healthcheck:
+      test: "wget --no-verbose --tries=1 --spider http://localhost:8888/actuator/health || exit 1"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: orderpipe-api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888/
+    depends_on:
+      service-registry:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    healthcheck:
+      test: "wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  order-service:
+    build: ./order-service
+    container_name: orderpipe-order-service
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888/
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgresql:5432/orderpipe
+      - SPRING_DATASOURCE_USERNAME=orderpipe
+      - SPRING_DATASOURCE_PASSWORD=orderpipe123
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_USERNAME=orderpipe
+      - SPRING_RABBITMQ_PASSWORD=orderpipe123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PASSWORD=orderpipe123
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+
+  inventory-service:
+    build: ./inventory-service
+    container_name: orderpipe-inventory-service
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888/
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgresql:5432/orderpipe
+      - SPRING_DATASOURCE_USERNAME=orderpipe
+      - SPRING_DATASOURCE_PASSWORD=orderpipe123
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_USERNAME=orderpipe
+      - SPRING_RABBITMQ_PASSWORD=orderpipe123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PASSWORD=orderpipe123
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+
+  payment-service:
+    build: ./payment-service
+    container_name: orderpipe-payment-service
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888/
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgresql:5432/orderpipe
+      - SPRING_DATASOURCE_USERNAME=orderpipe
+      - SPRING_DATASOURCE_PASSWORD=orderpipe123
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_USERNAME=orderpipe
+      - SPRING_RABBITMQ_PASSWORD=orderpipe123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PASSWORD=orderpipe123
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+
+  notification-service:
+    build: ./notification-service
+    container_name: orderpipe-notification-service
+    ports:
+      - "8084:8084"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888/
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgresql:5432/orderpipe
+      - SPRING_DATASOURCE_USERNAME=orderpipe
+      - SPRING_DATASOURCE_PASSWORD=orderpipe123
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_USERNAME=orderpipe
+      - SPRING_RABBITMQ_PASSWORD=orderpipe123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PASSWORD=orderpipe123
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+
+  shipping-service:
+    build: ./shipping-service
+    container_name: orderpipe-shipping-service
+    ports:
+      - "8085:8085"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888/
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgresql:5432/orderpipe
+      - SPRING_DATASOURCE_USERNAME=orderpipe
+      - SPRING_DATASOURCE_PASSWORD=orderpipe123
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_USERNAME=orderpipe
+      - SPRING_RABBITMQ_PASSWORD=orderpipe123
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PASSWORD=orderpipe123
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  redis_data:
+
+networks:
+  default:
+    name: orderpipe-network

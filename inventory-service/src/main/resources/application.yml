@@ -38,3 +38,29 @@ management:
 logging:
   level:
     com.orderpipe.inventory: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://postgresql:5432/orderpipe
+    driver-class-name: org.postgresql.Driver
+    username: orderpipe
+    password: orderpipe123
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+    username: orderpipe
+    password: orderpipe123
+  data:
+    redis:
+      host: redis
+      port: 6379
+      password: orderpipe123

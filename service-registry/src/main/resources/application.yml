@@ -34,3 +34,13 @@ logging:
   level:
     com.netflix.eureka: DEBUG
     com.netflix.discovery: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+eureka:
+  instance:
+    hostname: service-registry

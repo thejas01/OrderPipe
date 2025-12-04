@@ -1,0 +1,40 @@
+# Common Docker configuration for all services
+spring:
+  profiles:
+    active: docker
+
+# Common infrastructure configuration for Docker environment
+infrastructure:
+  postgresql:
+    host: postgresql
+    port: 5432
+    database: orderpipe
+    username: orderpipe
+    password: orderpipe123
+  
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+    username: orderpipe
+    password: orderpipe123
+  
+  redis:
+    host: redis
+    port: 6379
+    password: orderpipe123
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://service-registry:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always

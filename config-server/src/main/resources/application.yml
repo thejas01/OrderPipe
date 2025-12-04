@@ -42,3 +42,14 @@ spring:
       server:
         native:
           search-locations: classpath:/config
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: classpath:/config

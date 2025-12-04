@@ -37,3 +37,14 @@ management:
 logging:
   level:
     com.orderpipe.notification: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+    username: orderpipe
+    password: orderpipe123
